@@ -11,6 +11,7 @@ import (
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
+	peerstore "github.com/libp2p/go-libp2p-core/peer"
 )
 
 var (
@@ -92,6 +93,26 @@ func main() {
 		// configure our ping protrol
 		pingService := &p2p.PingService{ Host:node }
 		node.SetStreamHandler(p2p.PingID,pingService.PingHandler)
+
+		for _, addr := range config.BootstrapPeers {
+			peer, err := peerstore.AddrInfoFromP2pAddr(addr)
+			if err != nil {
+				panic(err)
+			}
+
+			if err := node.Connect(ctx,*peer); err != nil {
+				panic(err)
+			}
+			ch := pingService.Ping(ctx,peer.ID)
+			fmt.Println()
+			fmt.Println("pinging remote peer at",addr)
+			for i := 0; i < 4; i ++ {
+				res := <- ch
+				fmt.Println("PING",addr,"in",res.RTT)
+			}
+		}
+	
+		return
 	}
 
 	
