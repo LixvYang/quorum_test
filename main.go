@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"quorum/internal/pkg/cli"
+	"quorum/internal/pkg/p2p"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
@@ -74,22 +75,25 @@ func main() {
 		if len(config.BootstrapPeers) == 0 {
 			fmt.Println("Usage: ", os.Args[0], "-ping", "-peer <peer> [-peer <peer> ...]")
 		}
+
+		//FIXME: hardcode
+		tcpAddr := "/ip4/127.0.0.1/tcp/0"
+		wsAddr := "/ip4/127.0.0.1/tcp/0/ws"
+		ctx := context.Background()
+		node, err := libp2p.New(
+			ctx,
+			libp2p.ListenAddrStrings(tcpAddr, wsAddr),
+			libp2p.Ping(false),
+		)
+		if err != nil {
+			panic(err)
+		}
+
+		// configure our ping protrol
+		pingService := &p2p.PingService{ Host:node }
+		node.SetStreamHandler(p2p.PingID,pingService.PingHandler)
 	}
 
-	//Fix: hardcode
-	tcpAddr := "/ip4/127.0.0.1/tcp/0"
-	wsAddr := "/ip4/127.0.0.1/tcp/0/ws"
-	ctx := context.Background()
-	node, err := libp2p.New(
-		ctx,
-		libp2p.ListenAddrStrings(tcpAddr, wsAddr),
-		libp2p.Ping(false),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	// configure our ping protrol
-	pingService := &
+	
 
 }
