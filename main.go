@@ -8,6 +8,7 @@ import (
 
 	"quorum/internal/pkg/cli"
 	"quorum/internal/pkg/p2p"
+	"quorum/internal/pkg/utils"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
@@ -103,7 +104,8 @@ func main() {
 			if err := node.Connect(ctx,*peer); err != nil {
 				panic(err)
 			}
-			ch := pingService.Ping(ctx,peer.ID)
+
+			ch := pingService.Ping(ctx, peer.ID)
 			fmt.Println()
 			fmt.Println("pinging remote peer at",addr)
 			for i := 0; i < 4; i ++ {
@@ -111,10 +113,19 @@ func main() {
 				fmt.Println("PING",addr,"in",res.RTT)
 			}
 		}
-	
+
 		return
 	}
 
+	// check dir
+	if err := utils.EnsureDir(config.ConfigDir); err != nil {
+		panic(err)
+	}
 	
+	_, _, err = utils.NewTLSCert()
+	if err != nil {
+		panic(err)
+	}
 
+	os.Exit(1)
 }

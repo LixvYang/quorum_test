@@ -28,12 +28,12 @@ type PingService struct {
 
 func NewPingService(h host.Host) *PingService {
 	ps := &PingService{h}
-	h.SetStreamHandler(PingID,ps.PingHandler)
+	h.SetStreamHandler(PingID, ps.PingHandler)
 	return ps
 }
 
 func (p *PingService) PingHandler(s network.Stream)  {
-	buf := make([]byte,PingSize)
+	buf := make([]byte,32)
 
 	errCh := make(chan error,1)
 	defer close(errCh)
@@ -52,11 +52,10 @@ func (p *PingService) PingHandler(s network.Stream)  {
 				pinglog.Error("ping loop failed without error")
 			}
 		}
-		s.Reset()
 	}()
 
 	for {
-		_, err := io.ReadFull(s,buf)
+		_, err := io.ReadFull(s, buf)
 		if err != nil {
 			errCh <- err
 			return
@@ -71,6 +70,7 @@ func (p *PingService) PingHandler(s network.Stream)  {
 	}
 }
 
+// Result is a result of a ping attempt, either an RTT or an error.
 type Result struct {
 	RTT time.Duration
 	Error error
@@ -80,7 +80,7 @@ func (ps *PingService) Ping(ctx context.Context, p peer.ID) <-chan Result {
 	return Ping(ctx,ps.Host,p)
 }
 
-func Ping(ctx context.Context,h host.Host, p peer.ID) <-chan Result {
+func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
 	s, err := h.NewStream(ctx,p,PingID)
 	if err != nil {
 		ch := make(chan Result,1)
@@ -113,23 +113,24 @@ func Ping(ctx context.Context,h host.Host, p peer.ID) <-chan Result {
 
 			select {
 			case out <- res:
-			case <-ctx.Done():
+			case <- ctx.Done():
 				return
 			}
-
 		}
 	}()
 
 	go func() {
-		//force the ping abort
+		// force the ping abort
 		<-ctx.Done()
 		s.Reset()
 	}()
+	
 	return out
 }
 
+// check if write equal read stream
 func ping(s network.Stream) (time.Duration, error) {
-	buf := make([]byte,PingSize)
+	buf := make([]byte, PingSize)
 	u.NewTimeSeededRand().Read(buf)
 
 	before := time.Now()
@@ -139,7 +140,7 @@ func ping(s network.Stream) (time.Duration, error) {
 	}
 
 	rbuf := make([]byte,PingSize)
-	_, err = io.ReadFull(s,rbuf)
+	_, err = io.ReadFull(s, rbuf)
 	if err != nil {
 		return 0, err
 	}
@@ -149,5 +150,4 @@ func ping(s network.Stream) (time.Duration, error) {
 	}
 
 	return time.Since(before), nil
-
 }
