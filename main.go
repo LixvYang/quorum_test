@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"quorum/internal/pkg/cli"
 	"quorum/internal/pkg/p2p"
@@ -15,10 +16,33 @@ import (
 	peerstore "github.com/libp2p/go-libp2p-core/peer"
 )
 
+const DEFAULT_KEY_NAME = "default"
+
 var (
 	ReleaseVersion string
 	GitCommit      string
+	mainlog = logging.Logger("main")
 )
+
+// return EBUSY if LOCK is exist
+func checkLockError(err error)  {
+	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "Another process is using this Badger database.") {
+			mainlog.Errorf(errStr)
+			os.Exit(16)
+		}
+	}
+}
+
+func createDb(path string)  {
+	
+}
+
+func mainRet()  {
+	
+}
+
 
 func main() {
 	if ReleaseVersion == "" {
@@ -129,3 +153,4 @@ func main() {
 
 	os.Exit(1)
 }
+
