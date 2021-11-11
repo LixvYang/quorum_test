@@ -10,6 +10,7 @@ import (
 	"quorum/internal/pkg/cli"
 	"quorum/internal/pkg/p2p"
 	"quorum/internal/pkg/utils"
+	"quorum/internal/pkg/storage"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
@@ -35,8 +36,22 @@ func checkLockError(err error)  {
 	}
 }
 
-func createDb(path string)  {
-	
+func createDb(path string) (*storage.DbMgr, error) {
+	var err error
+	groupDb := storage.QSBadger{}
+	dataDb := storage.QSBadger{}
+	err = groupDb.Init(path + "_groups")
+	if err != nil {
+		return nil, err
+	}
+
+	err = dataDb.Init(path + "_db")
+	if err != nil {
+		return nil, err
+	}
+
+	manager := storage.DbMgr{&groupDb, &dataDb, nil, path}
+	return &manager, nil
 }
 
 func mainRet()  {
