@@ -54,8 +54,18 @@ func createDb(path string) (*storage.DbMgr, error) {
 	return &manager, nil
 }
 
-func mainRet()  {
-	
+func mainRet(config cli.Config)  {
+	signalch = make(chan os.Signal, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	mainlog.Infof("Version: %s", GitCommit)
+	peername := config.PeerName
+
+	if config.IsBootstrap == true {
+		peername = "bootstrap"
+	}
+
 }
 
 
