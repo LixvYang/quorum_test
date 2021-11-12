@@ -11,6 +11,7 @@ import (
 	"quorum/internal/pkg/p2p"
 	"quorum/internal/pkg/utils"
 	"quorum/internal/pkg/storage"
+	"quorum/internal/pkg/options"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
@@ -65,6 +66,15 @@ func mainRet(config cli.Config)  {
 	if config.IsBootstrap == true {
 		peername = "bootstrap"
 	}
+
+	//Load node options
+	nodeoptions, err := options.InitNodeOptions(config.ConfigDir, peername)
+	if err != nil {
+		cancel()
+		mainlog.Fatalf(err.Error())
+	}
+
+	
 
 }
 
