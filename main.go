@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"path"
 
 	"quorum/internal/pkg/cli"
 	"quorum/internal/pkg/p2p"
@@ -14,6 +15,7 @@ import (
 	"quorum/internal/pkg/options"
 	localcrypto "quorum/internal/pkg/crypto"
 
+	dsbadger2 "github.com/ipfs/go-ds-badger2"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
 	peerstore "github.com/libp2p/go-libp2p-core/peer"
@@ -154,7 +156,50 @@ func mainRet(config cli.Config)  {
 		fmt.Printf("load signkey: %d press any key to continue...\n", signkeycount)
 	}
 
-	
+	_, err = ks.GetKeyFromUnlocked(localcrypto.Sign.NameString(DEFAUT_KEY_NAME))
+	signkeycount = ks.UnlockedKeyCount(localcrypto.Sign)
+	signkeycount = ks.UnlockedKeyCount(localcrypto.Sign)
+	if signkeycount == 0 {
+		mainlog.Fatalf("load signkey error, exit... %s", err)
+		cancel()
+		return 0
+	}
+
+	//Load default sign keys
+	key, err := ks.GetKeyFromUnlocked(localcrypto.Sign.NameString(DEFAUT_KEY_NAME))
+
+	defaultkey, ok := key.(*ethkeystore.Key)
+	if ok == false {
+		fmt.Println("load default key error, exit...")
+		mainlog.Fatalf(err.Error())
+		cancel()
+		return 0
+	}
+	keys, err := localcrypto.SignKeytoPeerKeys(defaultkey)
+
+	if err != nil {
+		mainlog.Fatalf(err.Error())
+		cancel()
+		return 0
+	}
+
+	peerid, ethaddr, err := ks.GetPeerInfo(DEFAUT_KEY_NAME)
+	if err != nil {
+		cancel()
+		mainlog.Fatalf(err.Error())
+	}
+
+	mainlog.Infof("eth addresss: <%s>", ethaddr)
+	ds, err := dsbadger2.NewDatastore(path.Join(config.DataDir, fmt.Sprintf("%s-%s", peername, "peerstore")), &dsbadger2.DefaultOptions)
+	checkLockError(err)
+	if err != nil {
+		cancel()
+		mainlog.Fatalf(err.Error())
+	}
+
+	if config.IsBootstrap == true {
+		
+	}
 }
 
 
