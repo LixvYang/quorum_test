@@ -12,13 +12,15 @@ import (
 	"quorum/internal/pkg/utils"
 	"quorum/internal/pkg/storage"
 	"quorum/internal/pkg/options"
+	localcrypto "quorum/internal/pkg/crypto"
 
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
 	peerstore "github.com/libp2p/go-libp2p-core/peer"
 )
 
-const DEFAULT_KEY_NAME = "default"
+const DEFAUT_KEY_NAME string = "default"
+
 
 var (
 	ReleaseVersion string
@@ -74,8 +76,85 @@ func mainRet(config cli.Config)  {
 		mainlog.Fatalf(err.Error())
 	}
 
-	
+	signkeycount, err := localcrypto.InitKeystore(config.KeyStoreName, config.KeyStoreDir)
+	ksi := localcrypto.GetKeystore()
+	if err != nil {
+		cancel()
+		mainlog.Fatalf(err.Error())
+	}
+	ks, ok := ksi.(*localcrypto.DirKeyStore)
+	if !ok {
+		//TODO: test other keystore type?
+		//if there are no other keystores, exit and show error info.
+		cancel()
+		mainlog.Fatalf(err.Error())
+	}
 
+	password := os.Getenv("RUM_KSPASSWD")
+	if signkeycount > 0 {
+		if password == "" {
+			password, err := localcrypto.PassphrasePromptForUnlock()
+		}
+		err = ks.Unlock(nodeoptions.SignKeyMap,password)
+		if err != nil {
+			mainlog.Fatalf(err.Error())
+			cancel()
+			return 0
+		}
+	} else {
+		if password == "" {
+			password, err = localcrypto.PassphrasePromptForEncryption()
+			if err != nil {
+				mainlog.Fatalf(err.Error())
+				cancel()
+				return 0
+			}
+			fmt.Println("Please keeping your password safe, We can't recover or reset your password.")
+			fmt.Println("Your password:", password)
+			fmt.Println("After saving the password, press any key to continue.")
+			os.Stdin.Read(make([]byte, 1))
+		}
+
+		signkeyhexstr, err := localcrypto.LoadEncodeKeyFrom(config.ConfigDir, peername, "txt")
+		if err != nil {
+			cancel()
+			mainlog.Fatalf(err.Error())
+		}
+		var addr string
+		if signkeyhexstr != "" {
+			addr, err = ks.Import(DEFAUT_KEY_NAME, signkeyhexstr, localcrypto.Sign, password)
+		} else {
+			addr, err = ks.NewKey(DEFAUT_KEY_NAME,localcrypto.Sign, password)
+			if err != nil {
+				mainlog.Fatalf(err.Error())
+				cancel()
+				return 0
+			}
+		}
+
+		if addr == "" {
+			mainlog.Fatalf("Load or create new signkey failed")
+			cancel()
+			return 0
+		}
+
+		err = nodeoptions.SetSignKeyMap(DEFAUT_KEY_NAME, addr)
+		if err != nil {
+			mainlog.Fatalf(err.Error())
+			cancel()
+			return 0
+		}
+		err = ks.Unlock(nodeoptions.SignKeyMap, password)
+		if err != nil {
+			mainlog.Fatalf(err.Error())
+			cancel()
+			return 0
+		}
+
+		fmt.Printf("load signkey: %d press any key to continue...\n", signkeycount)
+	}
+
+	
 }
 
 
