@@ -14,6 +14,7 @@ import (
 	"quorum/internal/pkg/storage"
 	"quorum/internal/pkg/options"
 	localcrypto "quorum/internal/pkg/crypto"
+	ethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
 
 	dsbadger2 "github.com/ipfs/go-ds-badger2"
 	logging "github.com/ipfs/go-log/v2"
@@ -198,7 +199,10 @@ func mainRet(config cli.Config)  {
 	}
 
 	if config.IsBootstrap == true {
+		listenaddresses, _ := utils.StringsToAddrs([]string{config.ListenAddresses})
+		// bootstrop node connections: low watermarks: 1000 hi watermarks 50000, grace 30s
 		
+
 	}
 }
 

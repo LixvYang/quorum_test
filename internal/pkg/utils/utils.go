@@ -5,6 +5,7 @@ import (
 	"os"
 
 	logging "github.com/ipfs/go-log/v2"
+	maddr "github.com/multiformats/go-multiaddr"
 )
 
 var logger = logging.Logger("utils")
@@ -49,4 +50,15 @@ func GetRandomStr(n int) string {
 		b[i] = letters[rand.Int63()%lettersLength]
 	}
 	return string(b)
+}
+
+func StringsToAddrs(addrStrings []string) (maddrs []maddr.Multiaddr, err error) {
+	for _, addrString := range addrStrings {
+		addr, err := maddr.NewMultiaddr(addrString)
+		if err != nil {
+			return maddrs, err
+		}
+		maddrs = append(maddrs, addr)
+	}
+	return
 }
