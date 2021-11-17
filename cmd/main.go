@@ -5,34 +5,37 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"path"
+	"strings"
 
 	"quorum/internal/pkg/cli"
-	"quorum/internal/pkg/p2p"
-	"quorum/internal/pkg/utils"
-	"quorum/internal/pkg/storage"
-	"quorum/internal/pkg/options"
 	localcrypto "quorum/internal/pkg/crypto"
+	"quorum/internal/pkg/nodectx"
+	"quorum/internal/pkg/options"
+	"quorum/internal/pkg/p2p"
+	"quorum/internal/pkg/storage"
+	"quorum/internal/pkg/utils"
+	"quorum/internal/pkg/api"
+
 	ethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
 
 	dsbadger2 "github.com/ipfs/go-ds-badger2"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
+	connmgr "github.com/libp2p/go-libp2p-connmgr"
 	peerstore "github.com/libp2p/go-libp2p-core/peer"
 )
 
 const DEFAUT_KEY_NAME string = "default"
 
-
 var (
 	ReleaseVersion string
 	GitCommit      string
-	mainlog = logging.Logger("main")
+	mainlog        = logging.Logger("main")
 )
 
 // return EBUSY if LOCK is exist
-func checkLockError(err error)  {
+func checkLockError(err error) {
 	if err != nil {
 		errStr := err.Error()
 		if strings.Contains(errStr, "Another process is using this Badger database.") {
@@ -60,7 +63,7 @@ func createDb(path string) (*storage.DbMgr, error) {
 	return &manager, nil
 }
 
-func mainRet(config cli.Config)  {
+func mainRet(config cli.Config) {
 	signalch = make(chan os.Signal, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -98,7 +101,7 @@ func mainRet(config cli.Config)  {
 		if password == "" {
 			password, err := localcrypto.PassphrasePromptForUnlock()
 		}
-		err = ks.Unlock(nodeoptions.SignKeyMap,password)
+		err = ks.Unlock(nodeoptions.SignKeyMap, password)
 		if err != nil {
 			mainlog.Fatalf(err.Error())
 			cancel()
@@ -127,7 +130,7 @@ func mainRet(config cli.Config)  {
 		if signkeyhexstr != "" {
 			addr, err = ks.Import(DEFAUT_KEY_NAME, signkeyhexstr, localcrypto.Sign, password)
 		} else {
-			addr, err = ks.NewKey(DEFAUT_KEY_NAME,localcrypto.Sign, password)
+			addr, err = ks.NewKey(DEFAUT_KEY_NAME, localcrypto.Sign, password)
 			if err != nil {
 				mainlog.Fatalf(err.Error())
 				cancel()
@@ -201,11 +204,29 @@ func mainRet(config cli.Config)  {
 	if config.IsBootstrap == true {
 		listenaddresses, _ := utils.StringsToAddrs([]string{config.ListenAddresses})
 		// bootstrop node connections: low watermarks: 1000 hi watermarks 50000, grace 30s
-		
+
+		node, err := p2p.NewNode(ctx, nodeoptions, config.IsBootstrap, ds, defaultkey, connmgr.NewConnManager(1000, 50000, 30), listenaddresses, config.JsonTracer)
+		if err != nil {
+			mainlog.Fatalf(err.Error())
+		}
+
+		datapath := config.DataDir + "/" + config.PeerName
+		dbManager, err := createDb(datapath)
+		if err != nil {
+			mainlog.Fatal(err.Error())
+		}
+		nodectx.InitCtx(ctx, "", node, dbManager, "Pubsub", GitCommit)
+		nodectx.GetNodeCtx().KeyStore = ksi
+		nodectx.GetNodeCtx().PublicKey = keys.PubKey
+		nodectx.GetNodeCtx().PeerId = peerid
+
+		mainlog.Infof("Host created, ID:<%s>, Address:<%s>", node.Host.ID(), node.Host.Addrs())
+		h := &api.Handler{Node: node, NodeCtx: nodectx.GetNodeCtx(), GitCommit: GitCommit}
+		go api.StartAPIServer(config, signalch, h, nil, node, nodeoptions, ks, ethaddr, true)
+	} else {
 
 	}
 }
-
 
 func main() {
 	if ReleaseVersion == "" {
@@ -279,8 +300,8 @@ func main() {
 		}
 
 		// configure our ping protrol
-		pingService := &p2p.PingService{ Host:node }
-		node.SetStreamHandler(p2p.PingID,pingService.PingHandler)
+		pingService := &p2p.PingService{Host: node}
+		node.SetStreamHandler(p2p.PingID, pingService.PingHandler)
 
 		for _, addr := range config.BootstrapPeers {
 			peer, err := peerstore.AddrInfoFromP2pAddr(addr)
@@ -288,16 +309,16 @@ func main() {
 				panic(err)
 			}
 
-			if err := node.Connect(ctx,*peer); err != nil {
+			if err := node.Connect(ctx, *peer); err != nil {
 				panic(err)
 			}
 
 			ch := pingService.Ping(ctx, peer.ID)
 			fmt.Println()
-			fmt.Println("pinging remote peer at",addr)
-			for i := 0; i < 4; i ++ {
-				res := <- ch
-				fmt.Println("PING",addr,"in",res.RTT)
+			fmt.Println("pinging remote peer at", addr)
+			for i := 0; i < 4; i++ {
+				res := <-ch
+				fmt.Println("PING", addr, "in", res.RTT)
 			}
 		}
 
@@ -308,7 +329,7 @@ func main() {
 	if err := utils.EnsureDir(config.ConfigDir); err != nil {
 		panic(err)
 	}
-	
+
 	_, _, err = utils.NewTLSCert()
 	if err != nil {
 		panic(err)
@@ -316,4 +337,3 @@ func main() {
 
 	os.Exit(1)
 }
-

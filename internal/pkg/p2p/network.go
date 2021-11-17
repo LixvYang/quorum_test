@@ -3,14 +3,8 @@ package p2p
 import (
 	"context"
 	"fmt"
-	"quorum/internal/pkg/cli"
-	"quorum/internal/pkg/options"
-	"sync"
-	"time"
-
 	ethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
 	ethcrypto "github.com/ethereum/go-ethereum/crypto"
-	"github.com/huo-ju/quercus/pkg/pubsub"
 	dsbadger2 "github.com/ipfs/go-ds-badger2"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
@@ -25,10 +19,14 @@ import (
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p-kad-dht/dual"
-	"github.com/libp2p/go-libp2p-peerstore"
+	"github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-peerstore/pstoreds"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	maddr "github.com/multiformats/go-multiaddr"
+	"quorum/internal/pkg/cli"
+	"quorum/internal/pkg/options"
+	"sync"
+	"time"
 )
 
 const ProtocolPrefix string = "/quorum"
@@ -40,18 +38,18 @@ type NodeInfo struct {
 }
 
 type Node struct {
-	PeerID	peer.ID
-	Host	host.Host
-	NetworkName string
-	Pubsub	*pubsub.PubSub
-	Ddht	*dual.DHT
-	Info	*NodeInfo
-	RoutingDiscovery	*discovery.RoutingDiscovery
+	PeerID           peer.ID
+	Host             host.Host
+	NetworkName      string
+	Pubsub           *pubsub.PubSub
+	Ddht             *dual.DHT
+	Info             *NodeInfo
+	RoutingDiscovery *discovery.RoutingDiscovery
 }
 
 func NewNode(ctx context.Context, nodeopt *options.NodeOptions, isBootstrap bool, ds *dsbadger2.Datastore, key *ethkeystore.Key, cmgr *connmgr.BasicConnMgr, listenAddresses []maddr.Multiaddr, jsontracerfile string) (*Node, error) {
 	var ddht *dual.DHT
-	var routingDiscovery *discovery.DiscoveryRouting
+	var routingDiscovery *discovery.RoutingDiscovery
 	var pstore peerstore.Peerstore
 	var err error
 
@@ -65,7 +63,7 @@ func NewNode(ctx context.Context, nodeopt *options.NodeOptions, isBootstrap bool
 
 	nodenetworkname := nodeopt.NetworkName
 	if nodeopt.EnableDevNetwork == true {
-		nodenetworkname = fmt.Sprintf("%s-%s",nodeopt.NetworkName,"dev")
+		nodenetworkname = fmt.Sprintf("%s-%s", nodeopt.NetworkName, "dev")
 	}
 
 	routingcustomprotocol := fmt.Sprintf("%s/%s", ProtocolPrefix, nodenetworkname)
@@ -82,12 +80,11 @@ func NewNode(ctx context.Context, nodeopt *options.NodeOptions, isBootstrap bool
 		return ddht, err
 	})
 
-	networklog.Infof("Enable dht protocol prefix: %s",routingcustomprotocol)
+	networklog.Infof("Enable dht protocol prefix: %s", routingcustomprotocol)
 
 	identity := libp2p.Identity(priv)
 
-	libp2poptions := []libp2p.Option{
-		routing,
+	libp2poptions := []libp2p.Option{routing,
 		libp2p.ListenAddrs(listenAddresses...),
 		libp2p.NATPortMap(),
 		libp2p.ConnectionManager(cmgr),
@@ -96,7 +93,7 @@ func NewNode(ctx context.Context, nodeopt *options.NodeOptions, isBootstrap bool
 	}
 
 	if ds != nil {
-		pstore, err := pstoreds.NewPeerstore(ctx, ds, pstoreds.DefaultOpts())
+		pstore, err = pstoreds.NewPeerstore(ctx, ds, pstoreds.DefaultOpts())
 		if err != nil {
 			return nil, err
 		}
@@ -108,24 +105,21 @@ func NewNode(ctx context.Context, nodeopt *options.NodeOptions, isBootstrap bool
 		networklog.Infof("NAT enabled")
 	}
 
-	host, err := libp2p.New(
-		ctx,
-		libp2poptions...
+	host, err := libp2p.New(ctx,
+		libp2poptions...,
 	)
-
 	if err != nil {
 		return nil, err
 	}
+	// configure our own ping protocol
+	pingService := &PingService{Host: host}
+	host.SetStreamHandler(PingID, pingService.PingHandler)
+	options := []pubsub.Option{pubsub.WithPeerExchange(true)}
 
-	//configure our own ping protocol
-	PingService := &PingService{ Host:host }
-	host.SetStreamHandler(PingID,PingService.PingHandler)
-	options := []pubsub.Opsion{pubsub.WithPeerExchange(true)}
-
-	networklog.Infof("Network Name:%s", nodenetworkname)
+	networklog.Infof("Network Name %s", nodenetworkname)
 
 	if isBootstrap == true {
-		// turn off the mesh in boostrapnode,
+		// turn off the mesh in bootstrapnode
 		pubsub.GossipSubD = 0
 		pubsub.GossipSubDscore = 0
 		pubsub.GossipSubDlo = 0
@@ -135,8 +129,7 @@ func NewNode(ctx context.Context, nodeopt *options.NodeOptions, isBootstrap bool
 		pubsub.GossipSubGossipFactor = 0.5
 	}
 
-	var ps *pubsub.Pubsub
-
+	var ps *pubsub.PubSub
 	if jsontracerfile != "" {
 		tracer, err := pubsub.NewJSONTracer(jsontracerfile)
 		if err != nil {
