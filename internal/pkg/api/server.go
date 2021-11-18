@@ -31,7 +31,7 @@ func StartAPIServer(config cli.Config,signalch chan os.Signal, h *Handler,node *
 	a := e.Group("/app/api")
 	r.GET("/quit",quitapp)
 	 if isbootstrapnode == false {
-		
+		r.POST("/v1/group", h.CreateGroup())
 	 }
 
 	 certPath, keyPath, err := utils.GetTLSCerts()

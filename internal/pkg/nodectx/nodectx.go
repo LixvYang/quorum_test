@@ -29,7 +29,7 @@ const (
 type NodeCtx struct {
 	Node      *p2p.Node
 	PeerId    peer.ID
-	KeyStore  localcrypto.Keystore
+	Keystore  localcrypto.Keystore
 	PublicKey p2pcrypto.PubKey
 	Name      string
 	Ctx       context.Context
