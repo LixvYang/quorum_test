@@ -80,7 +80,21 @@ func (h *Handler) CreateGroup() echo.HandlerFunc {
 		ks := nodectx.GetNodeCtx().Keystore
 		dirks, ok := ks.(*localcrypto.DirKeyStore)
 		if ok == true {
-			
+			hexkey, err := dirks.GetEncodedPubkey(groupid.String(),localcrypto.Sign)
+			if err != nil && strings.HasPrefix(err.Error(), "key not exist ") {
+				newsignaddr, err := dirks.NewKeyWithDefaultPassword(groupid.String(),localcrypto.Sign)
+				if err == nil && newsignaddr != "" {
+					err = nodeoptions.SetSignKeyMap(groupid.String(),newsignaddr)
+					if err != nil {
+						output[ERROR_INFO] = fmt.Sprintf("save key map %s err : %s",newsignaddr,err.Error())
+						return c.JSON(http.StatusBadRequest, output)
+					}
+				}
+				hexkey, err = dirks.GetEncodedPubkey(guuidid.String(),localcrypto.Sign)
+			} else {
+				output[ERROR_INFO] = "Create new group key err:" + err.Error()
+				return c.JSON(http.StatusBadRequest,output)
+			}
 		}
 	}
 }
