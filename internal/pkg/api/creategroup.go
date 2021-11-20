@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
-	"github.com/rumsystem/quorum/internal/pkg/options"
+	"quorum/internal/pkg/options"
 	quorumpb "quorum/internal/pkg/pb"
 
 	guuid "github.com/google/uuid"
@@ -90,12 +90,25 @@ func (h *Handler) CreateGroup() echo.HandlerFunc {
 						return c.JSON(http.StatusBadRequest, output)
 					}
 				}
-				hexkey, err = dirks.GetEncodedPubkey(guuidid.String(),localcrypto.Sign)
+				hexkey, err = dirks.GetEncodedPubkey(groupid.String(),localcrypto.Sign)
 			} else {
 				output[ERROR_INFO] = "Create new group key err:" + err.Error()
 				return c.JSON(http.StatusBadRequest,output)
 			}
+			pubkeybytes, err := hex.DecodeString(hexkey)
+			p2ppubkey, err := p2pcrypto.UnmarshalSecp256k1PrivateKey(pubkeybytes)
+			groupSignPubkey, err := p2pcrypto.MarshalPublicKey(p2ppubkey)
+			if err != nil {
+				output[ERROR_INFO] = "group key can't be decoded err:" + err.Error()
+				return c.JSON(http.StatusBadRequest,output)
+			}
+		} else {
+			output[ERROR_INFO] = fmt.Sprintf("unknown keystore type  %v:", ks)
+			return c.JSON(http.StatusBadRequest, output)
 		}
+
+		genesisBlock, err := chain.Create
+		
 	}
 }
 
