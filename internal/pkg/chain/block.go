@@ -42,6 +42,45 @@ func CreateBlock(oldBlock *quorumpb.Block, trxs []*quorumpb.Trx, groupPublicKey 
 	hash := Hash(bbytes)
 	newBlock.Hash = hash
 
-	// sign
+	signature, err := nodectx.GetNodeCtx().Keystore.SignByKeyName(newBlock.GroupId,hash,opts...)
+	if err != nil {
+		return nil, err
+	}
 
+	newBlock.Signature = signature
+	return &newBlock,nil
 }
+
+func CreateGeneisBlock(groupId string, groupPublicKey p2pcrypto.PubKey) (*quorumpb.Block, error)  {
+	encodedgroupPubkey, err := p2pcrypto.MarshalPublicKey(groupPublicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	var genesisBlock quorumpb.Block
+	genesisBlock.BlockId = guuid.New().String()
+	genesisBlock.GroupId = groupId
+	genesisBlock.PrevBlockId = ""
+	genesisBlock.PreviousHash = nil
+	genesisBlock.TimeStamp = time.Now().UnixNano()
+
+	genesisBlock.ProducerPubKey = p2pcrypto.ConfigEncodeKey(encodedgroupPubkey)
+	genesisBlock.Trxs = nil
+	
+	bbytes, err := proto.Marshal(&genesisBlock)
+	if err != nil {
+		return nil, err
+	}
+
+	hash := Hash(bbytes)
+	genesisBlock.Hash = hash
+
+	signature, err := nodectx.GetNodeCtx().Keystore.SignByKeyName(genesisBlock.GroupId, hash)
+	if err != nil {
+		return nil, err
+	}
+
+	genesisBlock.Signature = signature
+	return &genesisBlock, nil
+}
+
