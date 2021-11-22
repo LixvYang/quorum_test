@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"crypto/cipher"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -9,16 +10,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-playground/validator/v10"
-	"github.com/labstack/echo/v4"
 	"quorum/internal/pkg/options"
 	quorumpb "quorum/internal/pkg/pb"
 
-	guuid "github.com/google/uuid"
-	p2pcrypto "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/go-playground/validator/v10"
+	"github.com/labstack/echo/v4"
+
 	chain "quorum/internal/pkg/chain"
 	localcrypto "quorum/internal/pkg/crypto"
 	"quorum/internal/pkg/nodectx"
+
+	guuid "github.com/google/uuid"
+	p2pcrypto "github.com/libp2p/go-libp2p-core/crypto"
 )
 
 type CreateGroupParam struct {
@@ -107,7 +110,58 @@ func (h *Handler) CreateGroup() echo.HandlerFunc {
 			return c.JSON(http.StatusBadRequest, output)
 		}
 
-		genesisBlock, err := chain.Create
+		genesisBlock, err := chain.CreateGeneisBlock(groupid.String(), p2ppubkey)
+		if err != nil {
+			output[ERROR_INFO] = "Create genesis block failed wiht msg:" + err.Error()
+			return c.JSON(http.StatusBadRequest, output)
+		}
+
+		genesisBlockBytes, err := json.Marshal(genesisBlock)
+		if err != nil {
+			output[ERROR_INFO] = err.Error()
+			return c.JSON(http.StatusBadRequest, output)
+		}
+
+		cipherKey, err := localcrypto.CreateAesKey()
+
+		groupEncryptPubkey, err := dirks.GetEncodedPubkey(groupid.String(),localcrypto.Encrypt)
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "key not exist ") {
+				groupEncryptPubkey, err = dirks.NewKeyWithDefaultPassword(groupid.String(), localcrypto.Encrypt)
+				if err != nil {
+					output[ERROR_INFO] = "Create key pair failed with msg:" + err.Error()
+					return c.JSON(http.StatusBadRequest, output)
+				}
+			} else {
+				output[ERROR_INFO] = "Create key pair failed with msg:" + err.Error()
+				return c.JSON(http.StatusBadRequest, output)
+			}
+		}
+
+		// create group item
+		var item *quorumpb.GroupItem
+		item = &quorumpb.GroupItem{}
+		item.GroupId = groupid.String()
+		item.GroupName = params.GroupName
+		item.OwnerPubKey = p2pcrypto.ConfigEncodeKey(groupSignPubkey)
+		item.UserSignPubkey = item.OwnerPubKey
+		item.UserEncryptPubkey = groupEncryptPubkey
+		item.ConsenseType = quorumpb.GroupConsenseType_POA
+
+		if params.EncryptionType == "public" {
+			item.EncryptType = quorumpb.GroupEncryptType_PUBLIC
+		} else {
+			item.EncryptType = quorumpb.GroupEncryptType_PRIVATE
+		}
+
+		item.CipherKey = hex.EncodeToString(cipherKey)
+		item.AppKey = params.AppKey
+		item.HighestHeight = 0
+		item.HighestBlockId = genesisBlock.BlockId
+		item.LastUpdate = time.Now().UnixNano()
+		item.GenesisBlock = genesisBlock
+
+		var group *chain.Group
 		
 	}
 }
