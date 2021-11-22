@@ -84,3 +84,53 @@ func CreateGeneisBlock(groupId string, groupPublicKey p2pcrypto.PubKey) (*quorum
 	return &genesisBlock, nil
 }
 
+func IsBlockValid(newBlock, oldBlock *quorumpb.Block) (bool, error) {
+	// deep copy newBlock by the protobuf. quorumpb.Block is a protopbbuf defined struct.
+	clonedblockbuff, err := proto.Marshal(newBlock)
+	if err != nil {
+		return false, err
+	}
+
+	var blockWithoutHash *quorumpb.Block
+	blockWithoutHash = &quorumpb.Block{}
+
+	err = proto.Unmarshal(clonedblockbuff,blockWithoutHash)
+	if err != nil {
+		return false, err
+	}
+
+	// set hash to ""
+	blockWithoutHash.Hash = nil
+	blockWithoutHash = &quorumpb.Block{}
+
+	bbytes, err := proto.Marshal(blockWithoutHash)
+	if err != nil {
+		return  false, err
+	}
+	hash := Hash(bbytes)
+	if res := bytes.Compare(hash, newBlock.Hash); res != 0 {
+		return false, errors.New("Hash for new block is invalid")
+	}
+
+	if res := bytes.Compare(newBlock.PreviousHash, oldBlock.Hash); res != 0 {
+		return false, errors.New("PreviousHash mismatch")
+	}
+
+	if newBlock.PrevBlockId != oldBlock.BlockId {
+		return false, errors.New("Previous BlockId mismatch")
+	}
+
+	// create pubkey
+	serializedpub, err := p2pcrypto.ConfigDecodeKey(newBlock.ProducerPubKey)
+	if err != nil {
+		return false, err
+	}
+
+	pubkey, err := p2pcrypto.UnmarshalPublicKey(serializedpub)
+	if err != nil {
+		return false, err
+	}
+
+	verify, err := pubkey.Verify(newBlock.Hash,newBlock.Signature)
+	return verify, err
+}
