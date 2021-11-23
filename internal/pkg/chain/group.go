@@ -17,6 +17,8 @@ const (
 	PRODUCER_CHANNEL_PREFIX = "prod_channel_"
 )
 
+var group_log = logging.Logger("group")
+
 type Group struct {
 	// Group Item
 	Item *quorumpb.GroupItem
