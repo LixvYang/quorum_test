@@ -125,6 +125,17 @@ func (dbMgr *DbMgr) IsBlockExist(blockId string, cached bool, prefix ...string) 
 	return dbMgr.Db.IsExist([]byte(key))
 }
 
+func (dbMgr *DbMgr) IsParentExist(parentBlockId string, cached bool, prefix ...string) (bool, error) {
+	nodeprefix := getPrefix(prefix...)
+	var pKey string
+	if cached {
+		pKey = nodeprefix + CHD_PREFIX + "_" + BLK_PREFIX + "_" + parentBlockId
+	} else {
+		pKey = nodeprefix + BLK_PREFIX + "_" + parentBlockId
+	}
+	return dbMgr.Db.IsExist([]byte(pKey))
+}
+
 //add block
 func (dbMgr *DbMgr) AddBlock(newBlock *quorumpb.Block, cached bool, prefix ...string) error {
 	//create new chunk

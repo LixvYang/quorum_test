@@ -1,6 +1,6 @@
 package chain
 
-import quprumpb "quorum/internal/pkg/pb"
+import quorumpb "quorum/internal/pkg/pb"
 
 type ChainMolassesIface interface {
 	GetUserTrxMgr() *TrxMgr

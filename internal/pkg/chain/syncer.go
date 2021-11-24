@@ -3,7 +3,6 @@ package chain
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"quorum/internal/pkg/nodectx"

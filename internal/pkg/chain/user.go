@@ -5,7 +5,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type User struct {
+type User interface {
 	Init(item *quorumpb.GroupItem, nodename string, iface ChainMolassesIface)
 	UpdAnnounce(item *quorumpb.AnnounceItem) (string, error)
 	UpdBlkList(item *quorumpb.DenyUserItem) (string, error)
