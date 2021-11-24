@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"crypto/cipher"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -57,7 +56,7 @@ func (h *Handler) CreateGroup() echo.HandlerFunc {
 		var err error
 		output := make(map[string]string)
 		
-		validate := validate.New()
+		validate := validator.New()
 		params := new(CreateGroupParam)
 		if err = c.Bind(params); err != nil {
 			output[ERROR_INFO] = err.Error()
@@ -99,8 +98,8 @@ func (h *Handler) CreateGroup() echo.HandlerFunc {
 				return c.JSON(http.StatusBadRequest,output)
 			}
 			pubkeybytes, err := hex.DecodeString(hexkey)
-			p2ppubkey, err := p2pcrypto.UnmarshalSecp256k1PrivateKey(pubkeybytes)
-			groupSignPubkey, err := p2pcrypto.MarshalPublicKey(p2ppubkey)
+			p2ppubkey, err := p2pcrypto.UnmarshalSecp256k1PublicKey(pubkeybytes)
+			groupSignPubkey, err = p2pcrypto.MarshalPublicKey(p2ppubkey)
 			if err != nil {
 				output[ERROR_INFO] = "group key can't be decoded err:" + err.Error()
 				return c.JSON(http.StatusBadRequest,output)
@@ -162,7 +161,37 @@ func (h *Handler) CreateGroup() echo.HandlerFunc {
 		item.GenesisBlock = genesisBlock
 
 		var group *chain.Group
+		group = &chain.Group{}
+
+		err = group.CreateGrp(item)
+		if err != nil {
+			output[ERROR_INFO] = err.Error()
+			return c.JSON(http.StatusBadRequest, output)
+		}
+
+		groupmgr := chain.GetGroupMgr()
+		groupmgr.Groups[group.Item.GroupId] = group
 		
+
+		// create result
+		var buffer bytes.Buffer
+		buffer.Write(genesisBlockBytes)
+		buffer.Write([]byte(groupid.String()))
+		buffer.Write([]byte(params.GroupName))
+		buffer.Write(groupSignPubkey) //group owner pubkey
+		buffer.Write([]byte(params.ConsensusType))
+		buffer.Write([]byte(params.EncryptionType))
+		buffer.Write([]byte(params.AppKey))
+		buffer.Write(cipherKey)
+
+		hash := localcrypto.Hash(buffer.Bytes())
+		signature, err := ks.SignByKeyName(groupid.String(), hash)
+		encodedSign := hex.EncodeToString(signature)
+		encodedCipherKey := hex.EncodeToString(cipherKey)
+		
+		createGrpResult := &CreateGroupResult{GenesisBlock: genesisBlock, GroupId: groupid.String(), GroupName: params.GroupName, OwnerPubkey: item.OwnerPubKey, OwnerEncryptPubkey: item.UserEncryptPubkey, ConsensusType: params.ConsensusType, EncryptionType: params.EncryptionType, CipherKey: encodedCipherKey, AppKey: params.AppKey, Signature: encodedSign}
+		return c.JSON(http.StatusOK, createGrpResult)
 	}
+
 }
 
