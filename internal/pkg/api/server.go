@@ -36,6 +36,7 @@ func StartAPIServer(config cli.Config,signalch chan os.Signal, h *Handler,node *
 		r.POST("/v1/group/join", h.JoinGroup())
 		r.POST("/v1/group/leave", h.LeaveGroup)
 		r.POST("/v1/group/content", h.PostToGroup)
+		r.POST("v1/group/profile",h.UpdateProfile)
 		
 
 	 }
