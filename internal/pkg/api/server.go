@@ -22,7 +22,7 @@ import (
 
 var quitch chan os.Signal
 
-func StartAPIServer(config cli.Config,signalch chan os.Signal, h *Handler,node *p2p.Node,nodeopt *options.NodeOptions,ks  localcrypto.Keystore,ethaddr string,isbootstrapnode bool)  {
+func StartAPIServer(config cli.Config,signalch chan os.Signal, h *Handler, apph *appapi.Handler,node *p2p.Node,nodeopt *options.NodeOptions,ks  localcrypto.Keystore,ethaddr string,isbootstrapnode bool)  {
 	quitch = signalch
 	e := echo.New()
 	e.Binder = new(CustomBinder)
@@ -43,9 +43,23 @@ func StartAPIServer(config cli.Config,signalch chan os.Signal, h *Handler,node *
 		r.POST("/v1/group/announce", h.Announce)
 		r.POST("/v1/group/schema", h.Schema)
 		r.POST("/v1/group/:group_id/startsync", h.StartSync)
+		r.GET("/v1/node", h.GetNodeInfo)
+		r.GET("/v1/network", h.GetNetwork(&node.Host, node.Info, nodeopt, ethaddr))
+		r.POST("/v1/psping", h.PSPingPeer(node))
+		r.GET("/v1/block/:group_id/:block_id", h.GetBlockById)
+		r.GET("/v1/trx/:group_id/:trx_id", h.GetTrx)
+		r.GET("/v1/groups", h.GetGroups)
+		r.GET("/v1/group/:group_id/content", h.GetGroupCtn)
+		r.GET("/v1/group/:group_id/deniedlist", h.GetDeniedUserList)
+		r.GET("/v1/group/:group_id/producers", h.GetGroupProducers)
+		r.GET("/v1/group/:group_id/announced/users", h.GetAnnouncedGroupUsers)
+		r.GET("/v1/group/:group_id/announced/producers", h.GetAnnouncedGroupProducer)
+		r.GET("/v1/group/:group_id/app/schema", h.GetGroupAppSchema)
 
 
-
+		a.POST("/v1/group/:group_id/content", apph.ContentByPeers)
+		a.POST("/v1/token/apply", apph.ApplyToken)
+		a.POST("/v1/token/refresh", apph.RefreshToken)
 	 }
 
 	 certPath, keyPath, err := utils.GetTLSCerts()

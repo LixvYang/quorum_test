@@ -5,9 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path"
 	"strings"
+	"syscall"
 
+	"quorum/internal/pkg/api"
+	"quorum/internal/pkg/appdata"
+	"quorum/internal/pkg/chain"
 	"quorum/internal/pkg/cli"
 	localcrypto "quorum/internal/pkg/crypto"
 	"quorum/internal/pkg/nodectx"
@@ -15,15 +20,16 @@ import (
 	"quorum/internal/pkg/p2p"
 	"quorum/internal/pkg/storage"
 	"quorum/internal/pkg/utils"
-	"quorum/internal/pkg/api"
+
+	appapi "quorum/pkg/app/api"
 
 	ethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
-
 	dsbadger2 "github.com/ipfs/go-ds-badger2"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p"
 	connmgr "github.com/libp2p/go-libp2p-connmgr"
 	peerstore "github.com/libp2p/go-libp2p-core/peer"
+	discovery "github.com/libp2p/go-libp2p-discovery"
 )
 
 const DEFAUT_KEY_NAME string = "default"
@@ -31,6 +37,8 @@ const DEFAUT_KEY_NAME string = "default"
 var (
 	ReleaseVersion string
 	GitCommit      string
+	node           *p2p.Node
+	signalch       chan os.Signal
 	mainlog        = logging.Logger("main")
 )
 
@@ -43,6 +51,20 @@ func checkLockError(err error) {
 			os.Exit(16)
 		}
 	}
+}
+
+func createAppDb(path string) (*appdata.AppDb, error) {
+	var err error
+	db := storage.QSBadger{}
+	err = db.Init(path + "_appdb")
+	if err != nil {
+		return nil, err
+	}
+
+	app := appdata.NewAppDb()
+	app.Db = &db
+	app.DataPath = path
+	return app, nil
 }
 
 func createDb(path string) (*storage.DbMgr, error) {
@@ -63,7 +85,7 @@ func createDb(path string) (*storage.DbMgr, error) {
 	return &manager, nil
 }
 
-func mainRet(config cli.Config) {
+func mainRet(config cli.Config) int {
 	signalch = make(chan os.Signal, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -99,7 +121,7 @@ func mainRet(config cli.Config) {
 	password := os.Getenv("RUM_KSPASSWD")
 	if signkeycount > 0 {
 		if password == "" {
-			password, err := localcrypto.PassphrasePromptForUnlock()
+			password, err = localcrypto.PassphrasePromptForUnlock()
 		}
 		err = ks.Unlock(nodeoptions.SignKeyMap, password)
 		if err != nil {
@@ -216,7 +238,7 @@ func mainRet(config cli.Config) {
 			mainlog.Fatal(err.Error())
 		}
 		nodectx.InitCtx(ctx, "", node, dbManager, "Pubsub", GitCommit)
-		nodectx.GetNodeCtx().KeyStore = ksi
+		nodectx.GetNodeCtx().Keystore = ksi
 		nodectx.GetNodeCtx().PublicKey = keys.PubKey
 		nodectx.GetNodeCtx().PeerId = peerid
 
@@ -224,8 +246,82 @@ func mainRet(config cli.Config) {
 		h := &api.Handler{Node: node, NodeCtx: nodectx.GetNodeCtx(), GitCommit: GitCommit}
 		go api.StartAPIServer(config, signalch, h, nil, node, nodeoptions, ks, ethaddr, true)
 	} else {
+		listenaddresses, _ := utils.StringsToAddrs([]string{config.ListenAddresses})
+		//normal node connections: low watermarks: 10  hi watermarks 200, grace 60s
+		node, err = p2p.NewNode(ctx, nodeoptions, config.IsBootstrap, ds, defaultkey, connmgr.NewConnManager(10, 200, 60), listenaddresses, config.JsonTracer)
+		_ = node.Bootstrap(ctx, config)
 
+		for _, addr := range node.Host.Addrs() {
+			p2paddr := fmt.Sprintf("%s/p2p/%s", addr.String(), node.Host.ID())
+			mainlog.Infof("Peer ID:<%s>, Peer Address:<%s>", node.Host.ID(), p2paddr)
+		}
+
+		//Discovery and Advertise had been replaced by PeerExchange
+		mainlog.Infof("Announcing ourselves...")
+		discovery.Advertise(ctx, node.RoutingDiscovery, config.RendezvousString)
+		mainlog.Infof("Successfully announced!")
+
+		peerok := make(chan struct{})
+		go node.ConnectPeers(ctx, peerok, 3, config)
+
+		datapath := config.DataDir + "/" + config.PeerName
+		dbManager, err := createDb(datapath)
+		if err != nil {
+			mainlog.Fatalf(err.Error())
+		}
+		nodectx.InitCtx(ctx, "default", node, dbManager, "pubsub", GitCommit)
+		nodectx.GetNodeCtx().Keystore = ksi
+		nodectx.GetNodeCtx().PublicKey = keys.PubKey
+		nodectx.GetNodeCtx().PeerId = peerid
+		groupmgr := chain.InitGroupMgr(nodectx.GetDbMgr())
+
+		err = groupmgr.SyncAllGroup()
+		if err != nil {
+			mainlog.Fatalf(err.Error())
+		}
+
+		appdb, err := createAppDb(datapath)
+		if err != nil {
+			mainlog.Fatalf(err.Error())
+		}
+		checkLockError(err)
+
+		//run local http api service
+		h := &api.Handler{Node: node, NodeCtx: nodectx.GetNodeCtx(), Ctx: ctx, GitCommit: GitCommit}
+		apiaddress := "https://%s/api/v1"
+		if config.APIListenAddresses[:1] == ":" {
+			apiaddress = fmt.Sprintf(apiaddress, "localhost"+config.APIListenAddresses)
+		} else {
+			apiaddress = fmt.Sprintf(apiaddress, config.APIListenAddresses)
+		}
+		appsync := appdata.NewAppSyncAgent(apiaddress,"default",appdb,dbManager)
+		appsync.Start(10)
+		apph := &appapi.Handler{
+			Appdb:     appdb,
+			Chaindb:   dbManager,
+			GitCommit: GitCommit,
+			Apiroot:   apiaddress,
+			ConfigDir: config.ConfigDir,
+			PeerName:  config.PeerName,
+			NodeName:  nodectx.GetNodeCtx().Name,
+		}
+		go api.StartAPIServer(config, signalch, h, apph, node, nodeoptions, ks, ethaddr, false)
 	}
+
+	// attach signal
+	signal.Notify(signalch, os.Interrupt, os.Kill, syscall.SIGTERM)
+	signalType := <- signalch
+	signal.Stop(signalch)
+
+	if config.IsBootstrap != true {
+		groupmgr := chain.GetGroupMgr()
+		groupmgr.Release()
+	}
+
+	mainlog.Infof("On Signal <%s>",signalType)
+	mainlog.Infof("Exit command received. Exiting...")
+
+	return 0
 }
 
 func main() {

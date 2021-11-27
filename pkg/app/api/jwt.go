@@ -2,11 +2,12 @@ package api
 
 import (
 	"errors"
-	"quorum/internal/pkg/options"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt"
+	"quorum/internal/pkg/options"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -57,4 +58,127 @@ func CustomJWTConfig(jwtKey string) middleware.JWTConfig {
 		},
 	}
 	return config
+}
+
+
+//https://localhost:8002/app/api/v1/token/apply
+//curl -k -X POST -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2MzU1NDk1NTAsIm5hbWUiOiJwZWVyMiJ9.zMbTmoIEZhyjVtHpIF5Uy5cJClDVR1pB6W_DsrC9GcA"  https://localhost:8002/app/api/v1/token/refresh
+
+//{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2MzU1NDk2NDksIm5hbWUiOiJwZWVyMiJ9.ZXJBY0s_SqRcCM7_eM2LCQcjsZwY1epTby19O8lf_dk"}
+
+// @Tags Apps
+// @Summary GetAuthToken
+// @Description Get a auth token for authorizing requests from remote
+// @Produce json
+// @Param Authorization header string false "current auth token"
+// @Success 200 {object} TokenItem  "a auth token"
+// @Router /app/api/v1/token/apply [post]
+func (h *Handler) ApplyToken(c echo.Context) error {
+	nodeOpt := options.GetNodeOptions()
+	if nodeOpt == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"message": "Call InitNodeOptions() before use it",
+		})
+	}
+	if nodeOpt.JWTToken != "" {
+		// already generate jwt token; return 400
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"message": "please find jwt token in peer options; if want to refresh token, access /token/refresh",
+		})
+	}
+
+	jwtKey, err := getJWTKey(h)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"message": err.Error(),
+		})
+	}
+
+	tokenStr, err := getToken(h.PeerName, jwtKey)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"message": err.Error(),
+		})
+	}
+
+	if err := nodeOpt.SetJWTToken(tokenStr); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"message": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, &TokenItem{Token: tokenStr})
+}
+
+func jwtFromHeader(c echo.Context, header string, authScheme string) (string, error) {
+	parts := strings.Split(header, ":")
+	auth := c.Request().Header.Get(parts[1])
+	l := len(authScheme)
+	if len(auth) > l+1 && auth[:l] == authScheme {
+		return auth[l+1:], nil
+	}
+	return "", errors.New("missing jwt token")
+}
+
+// @Tags Apps
+// @Summary RefreshToken
+// @Description Get a new auth token
+// @Produce json
+// @Param Authorization header string true "current auth token"
+// @Success 200 {object} TokenItem  "a new auth token"
+// @Router /app/api/v1/token/refresh [post]
+func (h *Handler) RefreshToken(c echo.Context) error {
+	config := CustomJWTConfig("")
+	tokenStr, err := jwtFromHeader(c, config.TokenLookup, config.AuthScheme)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"message": err.Error(),
+		})
+	}
+
+	nodeOpt := options.GetNodeOptions()
+	if nodeOpt == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"message": "Call InitNodeOptions() before use it",
+		})
+	}
+
+	// check token
+	jwtKey, err := getJWTKey(h)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"message": err.Error(),
+		})
+	}
+
+	claims := jwt.MapClaims{}
+	_, err = jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(jwtKey), nil
+	})
+
+	if err != nil {
+		e := err.(*jwt.ValidationError)
+		if e.Errors == jwt.ValidationErrorExpired {
+			logger.Infof("token expires, return new token")
+		} else {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"message": err.Error(),
+			})
+		}
+	}
+
+	newTokenStr, err := getToken(h.PeerName, jwtKey)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"message": err.Error(),
+		})
+	}
+
+	if err := nodeOpt.SetJWTToken(newTokenStr); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"message": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, &TokenItem{Token: newTokenStr})
 }

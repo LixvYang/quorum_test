@@ -17,7 +17,7 @@ func ContentToBytes(content proto.Message) ([]byte, error) {
 	return encodedcontent, err
 }
 
-func BytetoMessage(trxid string, content []byte) (proto.Message, string, error) {
+func BytesToMessage(trxid string, content []byte) (proto.Message, string, error) {
 	anyobj := &anypb.Any{}
 
 	err := proto.Unmarshal(content, anyobj)
