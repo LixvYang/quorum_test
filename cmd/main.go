@@ -43,7 +43,7 @@ var (
 	mainlog        = logging.Logger("main")
 )
 
-// return EBUSY if LOCK is exist
+// reutrn EBUSY if LOCK is exist
 func checkLockError(err error) {
 	if err != nil {
 		errStr := err.Error()
@@ -52,20 +52,6 @@ func checkLockError(err error) {
 			os.Exit(16)
 		}
 	}
-}
-
-func createAppDb(path string) (*appdata.AppDb, error) {
-	var err error
-	db := storage.QSBadger{}
-	err = db.Init(path + "_appdb")
-	if err != nil {
-		return nil, err
-	}
-
-	app := appdata.NewAppDb()
-	app.Db = &db
-	app.DataPath = path
-	return app, nil
 }
 
 func createDb(path string) (*storage.DbMgr, error) {
@@ -84,6 +70,20 @@ func createDb(path string) (*storage.DbMgr, error) {
 
 	manager := storage.DbMgr{&groupDb, &dataDb, nil, path}
 	return &manager, nil
+}
+
+func createAppDb(path string) (*appdata.AppDb, error) {
+	var err error
+	db := storage.QSBadger{}
+	err = db.Init(path + "_appdb")
+	if err != nil {
+		return nil, err
+	}
+
+	app := appdata.NewAppDb()
+	app.Db = &db
+	app.DataPath = path
+	return app, nil
 }
 
 func mainRet(config cli.Config) int {
@@ -111,8 +111,9 @@ func mainRet(config cli.Config) int {
 		cancel()
 		mainlog.Fatalf(err.Error())
 	}
+
 	ks, ok := ksi.(*localcrypto.DirKeyStore)
-	if !ok {
+	if ok == false {
 		//TODO: test other keystore type?
 		//if there are no other keystores, exit and show error info.
 		cancel()
@@ -144,7 +145,7 @@ func mainRet(config cli.Config) int {
 			os.Stdin.Read(make([]byte, 1))
 		}
 
-		signkeyhexstr, err := localcrypto.LoadEncodeKeyFrom(config.ConfigDir, peername, "txt")
+		signkeyhexstr, err := localcrypto.LoadEncodedKeyFrom(config.ConfigDir, peername, "txt")
 		if err != nil {
 			cancel()
 			mainlog.Fatalf(err.Error())
@@ -166,7 +167,6 @@ func mainRet(config cli.Config) int {
 			cancel()
 			return 0
 		}
-
 		err = nodeoptions.SetSignKeyMap(DEFAUT_KEY_NAME, addr)
 		if err != nil {
 			mainlog.Fatalf(err.Error())
@@ -184,7 +184,6 @@ func mainRet(config cli.Config) int {
 	}
 
 	_, err = ks.GetKeyFromUnlocked(localcrypto.Sign.NameString(DEFAUT_KEY_NAME))
-	signkeycount = ks.UnlockedKeyCount(localcrypto.Sign)
 	signkeycount = ks.UnlockedKeyCount(localcrypto.Sign)
 	if signkeycount == 0 {
 		mainlog.Fatalf("load signkey error, exit... %s", err)
@@ -225,7 +224,9 @@ func mainRet(config cli.Config) int {
 	}
 
 	if config.IsBootstrap == true {
+		//bootstrop node connections: low watermarks: 1000  hi watermarks 50000, grace 30s
 		node, err := p2p.NewNode(ctx, nodeoptions, config.IsBootstrap, ds, defaultkey, connmgr.NewConnManager(1000, 50000, 30), config.ListenAddresses, config.JsonTracer)
+
 		if err != nil {
 			mainlog.Fatalf(err.Error())
 		}
@@ -233,9 +234,10 @@ func mainRet(config cli.Config) int {
 		datapath := config.DataDir + "/" + config.PeerName
 		dbManager, err := createDb(datapath)
 		if err != nil {
-			mainlog.Fatal(err.Error())
+			mainlog.Fatalf(err.Error())
 		}
-		nodectx.InitCtx(ctx, "", node, dbManager, "Pubsub", GitCommit)
+		dbManager.TryMigration(0) //TOFIX: pass the node data_ver
+		nodectx.InitCtx(ctx, "", node, dbManager, "pubsub", GitCommit)
 		nodectx.GetNodeCtx().Keystore = ksi
 		nodectx.GetNodeCtx().PublicKey = keys.PubKey
 		nodectx.GetNodeCtx().PeerId = peerid
@@ -244,7 +246,8 @@ func mainRet(config cli.Config) int {
 		h := &api.Handler{Node: node, NodeCtx: nodectx.GetNodeCtx(), GitCommit: GitCommit}
 		go api.StartAPIServer(config, signalch, h, nil, node, nodeoptions, ks, ethaddr, true)
 	} else {
-		node, err = p2p.NewNode(ctx, nodeoptions, config.IsBootstrap, ds, defaultkey, connmgr.NewConnManager(10, 200, 60), config.ListenAddresses, config.JsonTracer)
+		//normal node connections: low watermarks: 10  hi watermarks 200, grace 60s
+		node, err = p2p.NewNode(ctx, nodeoptions, config.IsBootstrap, ds, defaultkey, connmgr.NewConnManager(10, nodeoptions.ConnsHi, 60), config.ListenAddresses, config.JsonTracer)
 		_ = node.Bootstrap(ctx, config)
 
 		for _, addr := range node.Host.Addrs() {
@@ -258,13 +261,14 @@ func mainRet(config cli.Config) int {
 		mainlog.Infof("Successfully announced!")
 
 		peerok := make(chan struct{})
-		go node.ConnectPeers(ctx, peerok, 3, config)
+		go node.ConnectPeers(ctx, peerok, nodeoptions.MaxPeers, config)
 
 		datapath := config.DataDir + "/" + config.PeerName
 		dbManager, err := createDb(datapath)
 		if err != nil {
 			mainlog.Fatalf(err.Error())
 		}
+		dbManager.TryMigration(0) //TOFIX: pass the node data_ver
 		nodectx.InitCtx(ctx, "default", node, dbManager, "pubsub", GitCommit)
 		nodectx.GetNodeCtx().Keystore = ksi
 		nodectx.GetNodeCtx().PublicKey = keys.PubKey
@@ -283,7 +287,14 @@ func mainRet(config cli.Config) int {
 		checkLockError(err)
 
 		//run local http api service
-		h := &api.Handler{Node: node, NodeCtx: nodectx.GetNodeCtx(), Ctx: ctx, GitCommit: GitCommit}
+		h := &api.Handler{
+			Node:      node,
+			NodeCtx:   nodectx.GetNodeCtx(),
+			Ctx:       ctx,
+			GitCommit: GitCommit,
+			Appdb:     appdb,
+		}
+
 		apiaddress := "https://%s/api/v1"
 		if config.APIListenAddresses[:1] == ":" {
 			apiaddress = fmt.Sprintf(apiaddress, "localhost"+config.APIListenAddresses)
@@ -304,7 +315,7 @@ func mainRet(config cli.Config) int {
 		go api.StartAPIServer(config, signalch, h, apph, node, nodeoptions, ks, ethaddr, false)
 	}
 
-	// attach signal
+	//attach signal
 	signal.Notify(signalch, os.Interrupt, os.Kill, syscall.SIGTERM)
 	signalType := <-signalch
 	signal.Stop(signalch)
@@ -314,11 +325,13 @@ func mainRet(config cli.Config) int {
 		groupmgr.Release()
 	}
 
+	//cleanup before exit
 	mainlog.Infof("On Signal <%s>", signalType)
 	mainlog.Infof("Exit command received. Exiting...")
 
 	return 0
 }
+
 
 // @title Quorum Api
 // @version 1.0

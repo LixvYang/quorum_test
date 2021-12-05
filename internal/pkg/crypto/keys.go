@@ -23,9 +23,10 @@ type Keys struct {
 	groupKeys map[string]*age.X25519Identity
 }
 
-func LoadEncodeKeyFrom(dir, keyname, filetype string) (string, error) {
+func LoadEncodedKeyFrom(dir string, keyname string, filetype string) (string, error) {
 	keyfilepath := filepath.FromSlash(fmt.Sprintf("%s/%s_keys.%s", dir, keyname, filetype))
 	if filetype == "txt" {
+
 		f, err := os.Open(keyfilepath)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -41,10 +42,9 @@ func LoadEncodeKeyFrom(dir, keyname, filetype string) (string, error) {
 		}
 		return strings.TrimSpace(string(buf)), nil
 	} else {
-		return "", fmt.Errorf("unsupported filepath: %s", filetype)
+		return "", fmt.Errorf("unsupported filetype: %s", filetype)
 	}
 }
-
 
 func SignKeytoPeerKeys(key *ethkeystore.Key) (*Keys, error) {
 	ethprivkey := key.PrivateKey

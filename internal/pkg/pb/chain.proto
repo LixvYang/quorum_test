@@ -31,7 +31,7 @@ enum AnnounceType {
 }
 
 enum ApproveType {
-    ANNOUCNED = 0;
+    ANNOUNCED = 0;
     APPROVED  = 1;
     REJECTED  = 2;
 }
@@ -142,15 +142,17 @@ message AnnounceItem {
     ApproveType  Result             = 8;    
     int64        TimeStamp          = 9; 
     ActionType   Action             = 10;
+    string       Memo               = 11;
 }
 
 message SchemaItem {
-    string GroupId          = 1;
-    string SchemaJson       = 2;
-    string GroupOwnerPubkey = 3;
-    string GroupOwnerSign   = 4;
-    int64  TimeStamp        = 5;    
-    string Memo             = 6;
+    string       GroupId          = 1;    
+    string       GroupOwnerPubkey = 2;
+    string       GroupOwnerSign   = 3;    
+    string       Type             = 4;    
+    string       Rule             = 5;
+    int64        TimeStamp        = 6;    
+    ActionType   Action           = 7;
 }
 
 enum GroupEncryptType {
@@ -179,9 +181,43 @@ message GroupItem {
     string AppKey                  = 13;
 }
 
+enum RoleV0 {
+    GROUP_PRODUCER = 0;
+    GROUP_USER     = 1;
+}
+
+message GroupItemV0 {
+	string GroupId                 = 1;
+	string GroupName               = 2;
+	string OwnerPubKey             = 3;
+    string UserSignPubkey          = 4;
+    string UserEncryptPubkey       = 5;
+    RoleV0 UserRole                = 6;
+	int64  LastUpdate              = 7;
+	int64  HighestHeight           = 8;
+	string HighestBlockId          = 9;
+	Block  GenesisBlock            = 10;
+    GroupEncryptType EncryptType   = 11;
+    GroupConsenseType ConsenseType = 12;
+    string CipherKey               = 13;
+    string AppKey                  = 14;
+}
+
 message PSPing {
     int32 Seqnum        = 1;
     bool  IsResp        = 2;
     int64 TimeStamp     = 3;
     bytes Payload       = 4;
+}
+
+message GroupSeed {
+	Block  GenesisBlock = 1;
+	string GroupId  = 2;
+	string GroupName = 3;
+	string OwnerPubkey = 4;
+	string ConsensusType  = 5;
+	string EncryptionType = 6;
+	string CipherKey = 7;
+	string AppKey = 8;
+	string Signature = 9;
 }

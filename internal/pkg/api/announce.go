@@ -94,7 +94,7 @@ func (h *Handler) Announce(c echo.Context) (err error) {
 
 		item.OwnerPubkey = ""
 		item.OwnerSignature = ""
-		item.Result = quorumpb.ApproveType_ANNOUCNED
+		item.Result = quorumpb.ApproveType_ANNOUNCED
 
 		var buffer bytes.Buffer
 		buffer.Write([]byte(item.GroupId))
