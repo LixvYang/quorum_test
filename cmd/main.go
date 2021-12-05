@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -294,7 +295,7 @@ func mainRet(config cli.Config) int {
 		} else {
 			apiaddress = fmt.Sprintf(apiaddress, config.APIListenAddresses)
 		}
-		appsync := appdata.NewAppSyncAgent(apiaddress,"default",appdb,dbManager)
+		appsync := appdata.NewAppSyncAgent(apiaddress, "default", appdb, dbManager)
 		appsync.Start(10)
 		apph := &appapi.Handler{
 			Appdb:     appdb,
@@ -310,7 +311,7 @@ func mainRet(config cli.Config) int {
 
 	// attach signal
 	signal.Notify(signalch, os.Interrupt, os.Kill, syscall.SIGTERM)
-	signalType := <- signalch
+	signalType := <-signalch
 	signal.Stop(signalch)
 
 	if config.IsBootstrap != true {
@@ -318,12 +319,16 @@ func mainRet(config cli.Config) int {
 		groupmgr.Release()
 	}
 
-	mainlog.Infof("On Signal <%s>",signalType)
+	mainlog.Infof("On Signal <%s>", signalType)
 	mainlog.Infof("Exit command received. Exiting...")
 
 	return 0
 }
 
+// @title Quorum Api
+// @version 1.0
+// @description Quorum Api Docs
+// @BasePath /
 func main() {
 	if ReleaseVersion == "" {
 		ReleaseVersion = "v1.0.0"
@@ -331,11 +336,10 @@ func main() {
 	if GitCommit == "" {
 		GitCommit = "devel"
 	}
-
 	help := flag.Bool("h", false, "Display Help")
 	version := flag.Bool("version", false, "Show the version")
 	update := flag.Bool("update", false, "Update to the latest version")
-	// updateFrom := flag.String("from", "github", "Update from: github/qingcloud, default to github")
+	updateFrom := flag.String("from", "github", "Update from: github/qingcloud, default to github")
 	config, err := cli.ParseFlags()
 	lvl, err := logging.LevelFromString("info")
 	logging.SetAllLoggers(lvl)
@@ -345,7 +349,7 @@ func main() {
 		panic(err)
 	}
 
-	if config.IsDebug {
+	if config.IsDebug == true {
 		logging.SetLogLevel("main", "debug")
 		logging.SetLogLevel("crypto", "debug")
 		logging.SetLogLevel("network", "debug")
@@ -359,6 +363,7 @@ func main() {
 		logging.SetLogLevel("producer", "debug")
 		logging.SetLogLevel("user", "debug")
 		logging.SetLogLevel("groupmgr", "debug")
+		logging.SetLogLevel("trxmgr", "debug")
 	}
 
 	if *help {
@@ -366,27 +371,38 @@ func main() {
 		fmt.Println()
 		fmt.Println("Usage:...")
 		flag.PrintDefaults()
+		return
 	}
 
 	if *version {
 		fmt.Printf("%s - %s\n", ReleaseVersion, GitCommit)
 		return
 	}
-
 	if *update {
+		err := errors.New(fmt.Sprintf("invalid `-from`: %s", *updateFrom))
+		if *updateFrom == "qingcloud" {
+			// err = utils.CheckUpdateQingCloud(ReleaseVersion, "quorum")
+		} else if *updateFrom == "github" {
+			// err = utils.CheckUpdate(ReleaseVersion, "quorum")
+		}
+		if err != nil {
+			mainlog.Fatalf("Failed to do self-update: %s\n", err.Error())
+		}
 		return
 	}
 
 	if config.IsPing {
 		if len(config.BootstrapPeers) == 0 {
-			fmt.Println("Usage: ", os.Args[0], "-ping", "-peer <peer> [-peer <peer> ...]")
+			fmt.Println("Usage:", os.Args[0], "-ping", "-peer <peer> [-peer <peer> ...]")
+			return
 		}
 
-		//FIXME: hardcode
+		// FIXME: hardcode
 		tcpAddr := "/ip4/127.0.0.1/tcp/0"
 		wsAddr := "/ip4/127.0.0.1/tcp/0/ws"
 		ctx := context.Background()
 		node, err := libp2p.New(
+			ctx,
 			libp2p.ListenAddrStrings(tcpAddr, wsAddr),
 			libp2p.Ping(false),
 		)
@@ -394,7 +410,7 @@ func main() {
 			panic(err)
 		}
 
-		// configure our ping protrol
+		// configure our ping protocol
 		pingService := &p2p.PingService{Host: node}
 		node.SetStreamHandler(p2p.PingID, pingService.PingHandler)
 
@@ -407,7 +423,6 @@ func main() {
 			if err := node.Connect(ctx, *peer); err != nil {
 				panic(err)
 			}
-
 			ch := pingService.Ping(ctx, peer.ID)
 			fmt.Println()
 			fmt.Println("pinging remote peer at", addr)
@@ -419,9 +434,7 @@ func main() {
 
 		return
 	}
-
-	// check dir
-	if err := utils.EnsureDir(config.ConfigDir); err != nil {
+	if err := utils.EnsureDir(config.DataDir); err != nil {
 		panic(err)
 	}
 
@@ -430,5 +443,5 @@ func main() {
 		panic(err)
 	}
 
-	os.Exit(1)
+	os.Exit(mainRet(config))
 }
