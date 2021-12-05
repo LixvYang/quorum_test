@@ -11,6 +11,15 @@ import (
 	"strings"
 	"syscall"
 
+	ethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
+	_ "github.com/golang/protobuf/ptypes/timestamp" //import for swaggo
+	dsbadger2 "github.com/ipfs/go-ds-badger2"
+	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p"
+	connmgr "github.com/libp2p/go-libp2p-connmgr"
+	peerstore "github.com/libp2p/go-libp2p-core/peer"
+	discovery "github.com/libp2p/go-libp2p-discovery"
+	_ "github.com/multiformats/go-multiaddr" //import for swaggo
 	"quorum/internal/pkg/api"
 	"quorum/internal/pkg/appdata"
 	"quorum/internal/pkg/chain"
@@ -21,16 +30,11 @@ import (
 	"quorum/internal/pkg/p2p"
 	"quorum/internal/pkg/storage"
 	"quorum/internal/pkg/utils"
-
 	appapi "quorum/pkg/app/api"
+	_ "google.golang.org/protobuf/proto" //import for swaggo
 
-	ethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
-	dsbadger2 "github.com/ipfs/go-ds-badger2"
-	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p"
-	connmgr "github.com/libp2p/go-libp2p-connmgr"
-	peerstore "github.com/libp2p/go-libp2p-core/peer"
-	discovery "github.com/libp2p/go-libp2p-discovery"
+	//_ "google.golang.org/protobuf/proto/reflect/protoreflect" //import for swaggo
+	_ "google.golang.org/protobuf/types/known/timestamppb" //import for swaggo
 )
 
 const DEFAUT_KEY_NAME string = "default"
