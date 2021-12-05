@@ -20,7 +20,6 @@ type PSPing struct {
 	ctx          context.Context
 }
 
-
 type PingResult struct {
 	Seqnum  int32
 	Req_at  int64
@@ -31,15 +30,15 @@ var ping_log = logging.Logger("ping")
 var errCh chan error
 
 func NewPSPingService(ctx context.Context, ps *pubsub.PubSub, peerid peer.ID) *PSPing {
-	psping := &PSPing{PeerId: peerid,ps: ps,ctx: ctx}
+	psping := &PSPing{PeerId: peerid, ps: ps, ctx: ctx}
 	return psping
 }
 
 func (p *PSPing) EnablePing() error {
 	peerid := p.PeerId.Pretty()
-
 	var err error
-	topicid := fmt.Sprintf("PSPing: %s",peerid)
+	topicid := fmt.Sprintf("PSPing:%s", peerid)
+	p.Topic, err = p.ps.Join(topicid)
 	if err != nil {
 		ping_log.Infof("Enable PSPing channel <%s> failed", topicid)
 		return err
@@ -49,7 +48,7 @@ func (p *PSPing) EnablePing() error {
 
 	p.Subscription, err = p.Topic.Subscribe()
 	if err != nil {
-		ping_log.Fatalf("Subscribe PSPing channel <%s> failed",topicid)
+		ping_log.Fatalf("Subscribe PSPing channel <%s> failed", topicid)
 		ping_log.Fatalf(err.Error())
 		return err
 	} else {
@@ -65,9 +64,8 @@ func (p *PSPing) PingReq(dstpeerid string) ([10]int64, error) {
 	pingTimeout := time.Second * 5
 	errCh = make(chan error, 1)
 	timer := time.NewTimer(pingTimeout)
-	dsttopicid := fmt.Sprintf("Psping:%s", dstpeerid)
+	dsttopicid := fmt.Sprintf("PSPing:%s", dstpeerid)
 	var err error
-
 	p.Topic, err = p.ps.Join(dsttopicid)
 	if err != nil {
 		ping_log.Fatalf("Join PSPing dest channel <%s> failed", dsttopicid)
@@ -83,10 +81,11 @@ func (p *PSPing) PingReq(dstpeerid string) ([10]int64, error) {
 		ping_log.Infof("Subscribe PSPing dest channel <%s> done", dsttopicid)
 	}
 
-	defer func()  {
+	defer func() {
 		timer.Stop()
 		close(errCh)
 		p.Subscription.Cancel()
+		err := p.Topic.Close()
 		if err != nil {
 			ping_log.Infof("Close PSPing Topic <%s> failed", dsttopicid)
 		}
@@ -99,6 +98,7 @@ func (p *PSPing) PingReq(dstpeerid string) ([10]int64, error) {
 	}
 
 	resultmap := make(map[[32]byte]*PingResult)
+
 	for i := 0; i < 10; i++ {
 		var payload [32]byte
 		_, err := rand.Read(payload[0:32])
@@ -128,7 +128,6 @@ func (p *PSPing) PingReq(dstpeerid string) ([10]int64, error) {
 		}
 	}
 	return result, nil
-
 }
 
 func (p *PSPing) handlePingRequest() error {
@@ -154,7 +153,6 @@ func (p *PSPing) handlePingRequest() error {
 		}
 	}
 }
-
 
 func (p *PSPing) handlePingResponse(pingresult *map[[32]byte]*PingResult) error {
 	count := 0

@@ -32,26 +32,26 @@ func NewPingService(h host.Host) *PingService {
 	return ps
 }
 
-func (p *PingService) PingHandler(s network.Stream)  {
-	buf := make([]byte,32)
+func (p *PingService) PingHandler(s network.Stream) {
+	buf := make([]byte, PingSize)
 
-	errCh := make(chan error,1)
+	errCh := make(chan error, 1)
 	defer close(errCh)
-
 	timer := time.NewTimer(pingTimeout)
 	defer timer.Stop()
 
 	go func() {
 		select {
-		case <- timer.C:
+		case <-timer.C:
 			pinglog.Debug("ping timeout")
-		case err, ok := <- errCh:
+		case err, ok := <-errCh:
 			if ok {
 				pinglog.Debug(err)
 			} else {
 				pinglog.Error("ping loop failed without error")
 			}
 		}
+		s.Reset()
 	}()
 
 	for {
@@ -66,24 +66,27 @@ func (p *PingService) PingHandler(s network.Stream)  {
 			errCh <- err
 			return
 		}
+
 		timer.Reset(pingTimeout)
 	}
 }
 
 // Result is a result of a ping attempt, either an RTT or an error.
 type Result struct {
-	RTT time.Duration
+	RTT   time.Duration
 	Error error
 }
 
 func (ps *PingService) Ping(ctx context.Context, p peer.ID) <-chan Result {
-	return Ping(ctx,ps.Host,p)
+	return Ping(ctx, ps.Host, p)
 }
 
+// Ping pings the remote peer until the context is canceled, returning a stream
+// of RTTs or errors.
 func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
-	s, err := h.NewStream(ctx,p,PingID)
+	s, err := h.NewStream(ctx, p, PingID)
 	if err != nil {
-		ch := make(chan Result,1)
+		ch := make(chan Result, 1)
 		ch <- Result{Error: err}
 		close(ch)
 		return ch
@@ -92,7 +95,6 @@ func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
 	ctx, cancel := context.WithCancel(ctx)
 
 	out := make(chan Result)
-
 	go func() {
 		defer close(out)
 		defer cancel()
@@ -108,27 +110,25 @@ func Ping(ctx context.Context, h host.Host, p peer.ID) <-chan Result {
 
 			// No error, record the RTT.
 			if res.Error == nil {
-				h.Peerstore().RecordLatency(p,res.RTT)
+				h.Peerstore().RecordLatency(p, res.RTT)
 			}
 
 			select {
 			case out <- res:
-			case <- ctx.Done():
+			case <-ctx.Done():
 				return
 			}
 		}
 	}()
-
 	go func() {
-		// force the ping abort
+		// forces the ping to abort.
 		<-ctx.Done()
 		s.Reset()
 	}()
-	
+
 	return out
 }
 
-// check if write equal read stream
 func ping(s network.Stream) (time.Duration, error) {
 	buf := make([]byte, PingSize)
 	u.NewTimeSeededRand().Read(buf)
@@ -136,16 +136,16 @@ func ping(s network.Stream) (time.Duration, error) {
 	before := time.Now()
 	_, err := s.Write(buf)
 	if err != nil {
-		return 0,err
+		return 0, err
 	}
 
-	rbuf := make([]byte,PingSize)
+	rbuf := make([]byte, PingSize)
 	_, err = io.ReadFull(s, rbuf)
 	if err != nil {
 		return 0, err
 	}
 
-	if !bytes.Equal(buf,rbuf) {
+	if !bytes.Equal(buf, rbuf) {
 		return 0, errors.New("ping packet was incorrect")
 	}
 
