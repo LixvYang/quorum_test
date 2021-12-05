@@ -3,6 +3,7 @@ package utils
 import (
 	"math/rand"
 	"os"
+	"io"
 
 	logging "github.com/ipfs/go-log/v2"
 	maddr "github.com/multiformats/go-multiaddr"
@@ -61,4 +62,19 @@ func StringsToAddrs(addrStrings []string) (maddrs []maddr.Multiaddr, err error) 
 		maddrs = append(maddrs, addr)
 	}
 	return
+}
+
+// Is DirEmpty check if dir is empty
+func IsDirEmpty(name string) (bool, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	_, err = f.Readdirnames(1) // Or f.Readdir(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err //
 }
