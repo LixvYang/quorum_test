@@ -23,7 +23,7 @@ import (
 	discovery "github.com/libp2p/go-libp2p-discovery"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p-kad-dht/dual"
-	peerstore "github.com/libp2p/go-libp2p-peerstore"
+	peerstore "github.com/libp2p/go-libp2p-core/peerstore"
 	"github.com/libp2p/go-libp2p-peerstore/pstoreds"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	tcp "github.com/libp2p/go-tcp-transport"
@@ -96,7 +96,6 @@ func NewNode(ctx context.Context, nodeopt *options.NodeOptions, isBootstrap bool
 	}
 
 	host, err := libp2p.New(
-		ctx,
 		libp2poptions...,
 	)
 	if err != nil {

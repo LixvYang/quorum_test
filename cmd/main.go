@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path"
 	"strings"
 	"syscall"
 
@@ -220,7 +219,7 @@ func mainRet(config cli.Config) int {
 	}
 
 	mainlog.Infof("eth addresss: <%s>", ethaddr)
-	ds, err := dsbadger2.NewDatastore(path.Join(config.DataDir, fmt.Sprintf("%s-%s", peername, "peerstore")), &dsbadger2.DefaultOptions)
+	ds, err := dsbadger2.NewDatastore("tmp/das", &dsbadger2.DefaultOptions)
 	checkLockError(err)
 	if err != nil {
 		cancel()
